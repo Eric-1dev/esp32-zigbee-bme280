@@ -16,12 +16,12 @@ void button_init() {
     gpio_config_t io_conf = {
         .pin_bit_mask = (1ULL << BUTTON_GPIO),
         .mode = GPIO_MODE_INPUT,
-        .pull_up_en = true,
+        .pull_up_en = false,
         .pull_down_en = false,
-        .intr_type = GPIO_INTR_NEGEDGE,
+        .intr_type = GPIO_INTR_LOW_LEVEL,
     };
     gpio_config(&io_conf);
-    esp_sleep_enable_gpio_wakeup();
+    esp_sleep_enable_ext1_wakeup(1ULL << BUTTON_GPIO, ESP_EXT1_WAKEUP_ANY_LOW);
 }
 
 void check_wakeup_reason() {
@@ -30,7 +30,7 @@ void check_wakeup_reason() {
         case ESP_SLEEP_WAKEUP_TIMER:
             ESP_LOGI(TAG, "Пробуждение по таймеру");
             break;
-        case ESP_SLEEP_WAKEUP_GPIO:
+        case ESP_SLEEP_WAKEUP_EXT1:
             ESP_LOGI(TAG, "Пробуждение по кнопке");
             break;
         default:
@@ -66,7 +66,7 @@ void sensor_loop() {
         ESP_LOGI(TAG, "Напряжение: %.2f V", bat);
 
         vTaskDelay(pdMS_TO_TICKS(3000));
-        enter_deep_sleep(10);
+        enter_deep_sleep(30);
     }
 }
 
