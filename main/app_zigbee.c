@@ -7,6 +7,17 @@
 #include "ha/esp_zigbee_ha_standard.h"
 
 static const char *TAG = "Zigbee";
+static bool zigbee_network_joined = false;
+
+void factory_reset()
+{
+    esp_zb_factory_reset();
+}
+
+bool is_network_joined(void)
+{
+    return zigbee_network_joined;
+}
 
 void esp_zb_app_signal_handler(esp_zb_app_signal_t *signal_struct)
 {
@@ -30,15 +41,29 @@ void esp_zb_app_signal_handler(esp_zb_app_signal_t *signal_struct)
             else
             {
                 ESP_LOGI(TAG, "Device rebooted");
+                zigbee_network_joined = esp_zb_get_short_address() != 0xFFFF && esp_zb_get_short_address() != 0xFFFE;
             }
             break;
         case ESP_ZB_BDB_SIGNAL_STEERING:
             esp_zb_ieee_addr_t extended_pan_id;
             esp_zb_get_extended_pan_id(extended_pan_id);
-            ESP_LOGI(TAG, "Joined network successfully (Extended PAN ID: %02x:%02x:%02x:%02x:%02x:%02x:%02x:%02x, PAN ID: 0x%04hx, Channel:%d, Short Address: 0x%04hx)",
-                    extended_pan_id[7], extended_pan_id[6], extended_pan_id[5], extended_pan_id[4],
-                    extended_pan_id[3], extended_pan_id[2], extended_pan_id[1], extended_pan_id[0],
-                    esp_zb_get_pan_id(), esp_zb_get_current_channel(), esp_zb_get_short_address());
+            if (err_status == ESP_OK)
+            {
+                ESP_LOGI(TAG, "Joined network successfully (Extended PAN ID: %02x:%02x:%02x:%02x:%02x:%02x:%02x:%02x, PAN ID: 0x%04hx, Channel:%d, Short Address: 0x%04hx)",
+                         extended_pan_id[7], extended_pan_id[6], extended_pan_id[5], extended_pan_id[4],
+                         extended_pan_id[3], extended_pan_id[2], extended_pan_id[1], extended_pan_id[0],
+                         esp_zb_get_pan_id(), esp_zb_get_current_channel(), esp_zb_get_short_address());
+
+                zigbee_network_joined = true;
+            }
+            else
+            {
+                ESP_LOGW(TAG, "Неудачная попытка подключения к сети");
+            }
+            break;
+        case ESP_ZB_ZDO_SIGNAL_LEAVE_INDICATION:
+            zigbee_network_joined = false;
+            ESP_LOGW(TAG, "Устройство отключено от сети");
             break;
         default:
             ESP_LOGI(TAG, "ZDO signal: %s (0x%x), status: %s", esp_zb_zdo_signal_to_string(sig_type), sig_type,
@@ -50,8 +75,6 @@ void esp_zb_app_signal_handler(esp_zb_app_signal_t *signal_struct)
 static esp_zb_cluster_list_t *sensor_clusters_create()
 {
     esp_zb_cluster_list_t *cluster_list = esp_zb_zcl_cluster_list_create();
-
-    // esp_zb_temperature_sensor_cfg_t temperature_sensor = ESP_ZB_DEFAULT_TEMPERATURE_SENSOR_CONFIG();
 
     // Basic Cluster
     esp_zb_basic_cluster_cfg_t basic_config = {

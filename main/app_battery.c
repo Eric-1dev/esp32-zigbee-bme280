@@ -59,7 +59,7 @@ float read_battery_voltage()
 
 uint8_t calc_battery_percent(float voltage)
 {
-    int16_t value = (voltage - 3.3) * 100 / (4.2 - 3.3);
+    int16_t value = (voltage - 3.0) * 100 / (4.2 - 3.0);
     if (value < 0)
         value = 0;
 
