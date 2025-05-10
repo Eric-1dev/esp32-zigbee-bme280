@@ -1,22 +1,36 @@
 #include <stdio.h>
-#include "app_zigbee.h"
 #include "esp_zigbee_core.h"
 #include "zcl/esp_zigbee_zcl_common.h"
 #include "zcl/esp_zigbee_zcl_power_config.h"
 #include "esp_log.h"
 #include "ha/esp_zigbee_ha_standard.h"
+#include "app_zigbee.h"
 
 static const char *TAG = "Zigbee";
-static bool zigbee_network_joined = false;
+
+static zigbee_network_event_cb network_joined_callback = NULL;
+static zigbee_network_event_cb connection_failed_callback = NULL;
+
+static int8_t retry_count = 3;
 
 void factory_reset()
 {
     esp_zb_factory_reset();
 }
 
-bool is_network_joined(void)
+void register_zigbee_network_joined_callback(zigbee_network_event_cb cb)
 {
-    return zigbee_network_joined;
+    network_joined_callback = cb;
+}
+
+void register_connection_failed_callback(zigbee_network_event_cb cb)
+{
+    connection_failed_callback = cb;
+}
+
+static void bdb_start_top_level_commissioning_cb(uint8_t mode_mask)
+{
+    esp_zb_bdb_start_top_level_commissioning(mode_mask);
 }
 
 void esp_zb_app_signal_handler(esp_zb_app_signal_t *signal_struct)
@@ -32,42 +46,66 @@ void esp_zb_app_signal_handler(esp_zb_app_signal_t *signal_struct)
             break;
         case ESP_ZB_BDB_SIGNAL_DEVICE_FIRST_START:
         case ESP_ZB_BDB_SIGNAL_DEVICE_REBOOT:
-            ESP_LOGI(TAG, "Device started up in%s factory-reset mode", esp_zb_bdb_is_factory_new() ? "" : " non");
-            if (esp_zb_bdb_is_factory_new())
+            if (err_status == ESP_OK)
             {
-                ESP_LOGI(TAG, "Start network steering");
-                esp_zb_bdb_start_top_level_commissioning(ESP_ZB_BDB_MODE_NETWORK_STEERING);
+                ESP_LOGI(TAG, "Device started up in%s factory-reset mode", esp_zb_bdb_is_factory_new() ? "" : " non");
+                if (esp_zb_bdb_is_factory_new())
+                {
+                    ESP_LOGI(TAG, "Start network steering");
+                    esp_zb_bdb_start_top_level_commissioning(ESP_ZB_BDB_MODE_NETWORK_STEERING);
+                }
+                else
+                {
+                    ESP_LOGI(TAG, "Device rebooted");
+                    network_joined_callback();
+                }
             }
             else
             {
-                ESP_LOGI(TAG, "Device rebooted");
-                zigbee_network_joined = esp_zb_get_short_address() != 0xFFFF && esp_zb_get_short_address() != 0xFFFE;
+                if (retry_count-- > 0)
+                {
+                    ESP_LOGW(TAG, "%s failed with status: %s. Retrying %d", esp_zb_zdo_signal_to_string(sig_type), esp_err_to_name(err_status), retry_count);
+                    esp_zb_scheduler_alarm((esp_zb_callback_t)bdb_start_top_level_commissioning_cb, ESP_ZB_BDB_MODE_INITIALIZATION, 1000);
+                }
+                else
+                {
+                    connection_failed_callback();
+                }
             }
             break;
         case ESP_ZB_BDB_SIGNAL_STEERING:
-            esp_zb_ieee_addr_t extended_pan_id;
-            esp_zb_get_extended_pan_id(extended_pan_id);
             if (err_status == ESP_OK)
             {
+                esp_zb_ieee_addr_t extended_pan_id;
+                esp_zb_get_extended_pan_id(extended_pan_id);
                 ESP_LOGI(TAG, "Joined network successfully (Extended PAN ID: %02x:%02x:%02x:%02x:%02x:%02x:%02x:%02x, PAN ID: 0x%04hx, Channel:%d, Short Address: 0x%04hx)",
-                         extended_pan_id[7], extended_pan_id[6], extended_pan_id[5], extended_pan_id[4],
-                         extended_pan_id[3], extended_pan_id[2], extended_pan_id[1], extended_pan_id[0],
-                         esp_zb_get_pan_id(), esp_zb_get_current_channel(), esp_zb_get_short_address());
+                        extended_pan_id[7], extended_pan_id[6], extended_pan_id[5], extended_pan_id[4],
+                        extended_pan_id[3], extended_pan_id[2], extended_pan_id[1], extended_pan_id[0],
+                        esp_zb_get_pan_id(), esp_zb_get_current_channel(), esp_zb_get_short_address());
 
-                zigbee_network_joined = true;
+                network_joined_callback();
             }
             else
             {
-                ESP_LOGW(TAG, "Неудачная попытка подключения к сети");
+                if (retry_count-- > 0)
+                {
+                    ESP_LOGW(TAG, "Network steering was not successful (status: %s). Retrying %d", esp_err_to_name(err_status), retry_count);
+                    esp_zb_scheduler_alarm((esp_zb_callback_t)bdb_start_top_level_commissioning_cb, ESP_ZB_BDB_MODE_NETWORK_STEERING, 1000);
+                }
+                else
+                {
+                    connection_failed_callback();
+                }
             }
             break;
         case ESP_ZB_ZDO_SIGNAL_LEAVE_INDICATION:
-            zigbee_network_joined = false;
             ESP_LOGW(TAG, "Устройство отключено от сети");
             break;
+        case ESP_ZB_COMMON_SIGNAL_CAN_SLEEP:
+            // ESP_LOGI(TAG, "Zigbee can sleep");
+            break;
         default:
-            ESP_LOGI(TAG, "ZDO signal: %s (0x%x), status: %s", esp_zb_zdo_signal_to_string(sig_type), sig_type,
-                    esp_err_to_name(err_status));
+            ESP_LOGI(TAG, "ZDO signal: %s (0x%x), status: %s", esp_zb_zdo_signal_to_string(sig_type), sig_type, esp_err_to_name(err_status));
             break;
     }
 }
@@ -94,52 +132,57 @@ static esp_zb_cluster_list_t *sensor_clusters_create()
     ESP_ERROR_CHECK(esp_zb_cluster_list_add_identify_cluster(cluster_list, identity_cluster, ESP_ZB_ZCL_CLUSTER_SERVER_ROLE));
     ESP_ERROR_CHECK(esp_zb_cluster_list_add_identify_cluster(cluster_list, esp_zb_zcl_attr_list_create(ESP_ZB_ZCL_CLUSTER_ID_IDENTIFY), ESP_ZB_ZCL_CLUSTER_CLIENT_ROLE));
 
-    // Temperature Measurement Cluster
-    esp_zb_temperature_meas_cluster_cfg_t temp_config = {
-        .measured_value = 0,
-        .min_value = -10000,
-        .max_value = 10000,
-    };
-    esp_zb_attribute_list_t *temp_cluster = esp_zb_temperature_meas_cluster_create(&temp_config);
-    ESP_ERROR_CHECK(esp_zb_cluster_list_add_temperature_meas_cluster(cluster_list, temp_cluster, ESP_ZB_ZCL_CLUSTER_SERVER_ROLE));
+    // ------------------------------- Температура -------------------------------
+    int16_t temp_measured_value = 0; // 0.00°C (в сотых долях градуса Цельсия)
+    int16_t temp_min_value = -10000; // -100.00°C
+    int16_t temp_max_value = 10000;  // 100.00°C
+    uint16_t temp_tolerance = 10;     // 0.1°C (допуск в сотых долях градуса Цельсия)
 
-    // Humidity Measurement Cluster
-    esp_zb_humidity_meas_cluster_cfg_t humidity_config = {
-        .measured_value = 0xFFFF,
-        .min_value = 0,
-        .max_value = 10000
-    }; // 100% * 100
-    esp_zb_attribute_list_t *humidity_cluster = esp_zb_humidity_meas_cluster_create(&humidity_config);
-    ESP_ERROR_CHECK(esp_zb_cluster_list_add_humidity_meas_cluster(cluster_list, humidity_cluster, ESP_ZB_ZCL_CLUSTER_SERVER_ROLE));
+    esp_zb_attribute_list_t *temp_attr_list = esp_zb_zcl_attr_list_create(ESP_ZB_ZCL_CLUSTER_ID_TEMP_MEASUREMENT);
+    ESP_ERROR_CHECK(esp_zb_cluster_add_attr(temp_attr_list, ESP_ZB_ZCL_CLUSTER_ID_TEMP_MEASUREMENT, ESP_ZB_ZCL_ATTR_TEMP_MEASUREMENT_VALUE_ID, ESP_ZB_ZCL_ATTR_TYPE_S16, ESP_ZB_ZCL_ATTR_ACCESS_REPORTING, &temp_measured_value));
+    ESP_ERROR_CHECK(esp_zb_cluster_add_attr(temp_attr_list, ESP_ZB_ZCL_CLUSTER_ID_TEMP_MEASUREMENT, ESP_ZB_ZCL_ATTR_TEMP_MEASUREMENT_MIN_VALUE_ID, ESP_ZB_ZCL_ATTR_TYPE_S16, ESP_ZB_ZCL_ATTR_ACCESS_READ_ONLY, &temp_min_value));
+    ESP_ERROR_CHECK(esp_zb_cluster_add_attr(temp_attr_list, ESP_ZB_ZCL_CLUSTER_ID_TEMP_MEASUREMENT, ESP_ZB_ZCL_ATTR_TEMP_MEASUREMENT_MAX_VALUE_ID, ESP_ZB_ZCL_ATTR_TYPE_S16, ESP_ZB_ZCL_ATTR_ACCESS_READ_ONLY, &temp_max_value));
+    ESP_ERROR_CHECK(esp_zb_cluster_add_attr(temp_attr_list, ESP_ZB_ZCL_CLUSTER_ID_TEMP_MEASUREMENT, ESP_ZB_ZCL_ATTR_TEMP_MEASUREMENT_TOLERANCE_ID, ESP_ZB_ZCL_ATTR_TYPE_U16, ESP_ZB_ZCL_ATTR_ACCESS_READ_ONLY, &temp_tolerance));
+    ESP_ERROR_CHECK(esp_zb_cluster_list_add_temperature_meas_cluster(cluster_list, temp_attr_list, ESP_ZB_ZCL_CLUSTER_SERVER_ROLE));
 
-    // Pressure Measurement Cluster
-    esp_zb_pressure_meas_cluster_cfg_t pressure_config = {
-        .measured_value = 32768,
-        .min_value = -32768,
-        .max_value = 32767
-    };
-    esp_zb_attribute_list_t *pressure_cluster = esp_zb_pressure_meas_cluster_create(&pressure_config);
-    ESP_ERROR_CHECK(esp_zb_cluster_list_add_pressure_meas_cluster(cluster_list, pressure_cluster, ESP_ZB_ZCL_CLUSTER_SERVER_ROLE));
-    
-    // Power Configuration (Battery) Cluster
-    esp_zb_power_config_cluster_cfg_t power_config = {
-        .main_voltage = 30, // 3.0V
-        .main_freq = 0,
-        .main_voltage_max = 50,
-        .main_alarm_mask = 0,
-        .main_voltage_min = 0
-    };
-    // Создаем структуру атрибута
-    esp_zb_attribute_list_t *power_cluster = esp_zb_power_config_cluster_create(&power_config);
-    // Добавляем атрибут в кластер
-    uint8_t battery_percent_remaining = 127;
-    ESP_ERROR_CHECK(esp_zb_power_config_cluster_add_attr(power_cluster, ESP_ZB_ZCL_ATTR_POWER_CONFIG_BATTERY_PERCENTAGE_REMAINING_ID, &battery_percent_remaining));
-    ESP_ERROR_CHECK(esp_zb_cluster_list_add_power_config_cluster(cluster_list, power_cluster, ESP_ZB_ZCL_CLUSTER_SERVER_ROLE));
+    // ------------------------------- Влажность -------------------------------
+    int16_t hum_measured_value = 0xFFFF;
+    int16_t hum_min_value = 0;
+    int16_t hum_max_value = 10000;
+    uint16_t hum_tolerance = 10;
+
+    esp_zb_attribute_list_t *humidity_attr_list = esp_zb_zcl_attr_list_create(ESP_ZB_ZCL_CLUSTER_ID_REL_HUMIDITY_MEASUREMENT);
+    ESP_ERROR_CHECK(esp_zb_cluster_add_attr(humidity_attr_list, ESP_ZB_ZCL_CLUSTER_ID_REL_HUMIDITY_MEASUREMENT, ESP_ZB_ZCL_ATTR_REL_HUMIDITY_MEASUREMENT_VALUE_ID, ESP_ZB_ZCL_ATTR_TYPE_S16, ESP_ZB_ZCL_ATTR_ACCESS_REPORTING, &hum_measured_value));
+    ESP_ERROR_CHECK(esp_zb_cluster_add_attr(humidity_attr_list, ESP_ZB_ZCL_CLUSTER_ID_REL_HUMIDITY_MEASUREMENT, ESP_ZB_ZCL_ATTR_REL_HUMIDITY_MEASUREMENT_MIN_VALUE_ID, ESP_ZB_ZCL_ATTR_TYPE_S16, ESP_ZB_ZCL_ATTR_ACCESS_READ_ONLY, &hum_min_value));
+    ESP_ERROR_CHECK(esp_zb_cluster_add_attr(humidity_attr_list, ESP_ZB_ZCL_CLUSTER_ID_REL_HUMIDITY_MEASUREMENT, ESP_ZB_ZCL_ATTR_REL_HUMIDITY_MEASUREMENT_MAX_VALUE_ID, ESP_ZB_ZCL_ATTR_TYPE_S16, ESP_ZB_ZCL_ATTR_ACCESS_READ_ONLY, &hum_max_value));
+    ESP_ERROR_CHECK(esp_zb_cluster_add_attr(humidity_attr_list, ESP_ZB_ZCL_CLUSTER_ID_REL_HUMIDITY_MEASUREMENT, ESP_ZB_ZCL_ATTR_REL_HUMIDITY_TOLERANCE_ID, ESP_ZB_ZCL_ATTR_TYPE_U16, ESP_ZB_ZCL_ATTR_ACCESS_READ_ONLY, &hum_tolerance));
+    ESP_ERROR_CHECK(esp_zb_cluster_list_add_humidity_meas_cluster(cluster_list, humidity_attr_list, ESP_ZB_ZCL_CLUSTER_SERVER_ROLE));
+
+    // ------------------------------- Давление -------------------------------
+    int16_t pres_measured_value = 32768;
+    int16_t pres_min_value = -32768;
+    int16_t pres_max_value = 32767;
+    uint16_t pres_tolerance = 1;
+
+    esp_zb_attribute_list_t *pressure_attr_list = esp_zb_zcl_attr_list_create(ESP_ZB_ZCL_CLUSTER_ID_PRESSURE_MEASUREMENT);
+    ESP_ERROR_CHECK(esp_zb_cluster_add_attr(pressure_attr_list, ESP_ZB_ZCL_CLUSTER_ID_PRESSURE_MEASUREMENT, ESP_ZB_ZCL_ATTR_PRESSURE_MEASUREMENT_VALUE_ID, ESP_ZB_ZCL_ATTR_TYPE_S16, ESP_ZB_ZCL_ATTR_ACCESS_REPORTING, &pres_measured_value));
+    ESP_ERROR_CHECK(esp_zb_cluster_add_attr(pressure_attr_list, ESP_ZB_ZCL_CLUSTER_ID_PRESSURE_MEASUREMENT, ESP_ZB_ZCL_ATTR_PRESSURE_MEASUREMENT_MIN_VALUE_ID, ESP_ZB_ZCL_ATTR_TYPE_S16, ESP_ZB_ZCL_ATTR_ACCESS_READ_ONLY, &pres_min_value));
+    ESP_ERROR_CHECK(esp_zb_cluster_add_attr(pressure_attr_list, ESP_ZB_ZCL_CLUSTER_ID_PRESSURE_MEASUREMENT, ESP_ZB_ZCL_ATTR_PRESSURE_MEASUREMENT_MAX_VALUE_ID, ESP_ZB_ZCL_ATTR_TYPE_S16, ESP_ZB_ZCL_ATTR_ACCESS_READ_ONLY, &pres_max_value));
+    ESP_ERROR_CHECK(esp_zb_cluster_add_attr(pressure_attr_list, ESP_ZB_ZCL_CLUSTER_ID_PRESSURE_MEASUREMENT, ESP_ZB_ZCL_ATTR_PRESSURE_MEASUREMENT_TOLERANCE_ID, ESP_ZB_ZCL_ATTR_TYPE_U16, ESP_ZB_ZCL_ATTR_ACCESS_READ_ONLY, &pres_tolerance));
+    ESP_ERROR_CHECK(esp_zb_cluster_list_add_pressure_meas_cluster(cluster_list, pressure_attr_list, ESP_ZB_ZCL_CLUSTER_SERVER_ROLE));
+
+    // ------------------------------- Питание -------------------------------
+    uint8_t battery_percent_value = 100;
+    esp_zb_attribute_list_t *power_attr_list = esp_zb_zcl_attr_list_create(ESP_ZB_ZCL_CLUSTER_ID_POWER_CONFIG);
+    ESP_ERROR_CHECK(esp_zb_cluster_add_attr(power_attr_list, ESP_ZB_ZCL_CLUSTER_ID_POWER_CONFIG, ESP_ZB_ZCL_ATTR_POWER_CONFIG_BATTERY_PERCENTAGE_REMAINING_ID, ESP_ZB_ZCL_ATTR_TYPE_U16, ESP_ZB_ZCL_ATTR_ACCESS_REPORTING, &battery_percent_value));
+    ESP_ERROR_CHECK(esp_zb_cluster_list_add_power_config_cluster(cluster_list, power_attr_list, ESP_ZB_ZCL_CLUSTER_SERVER_ROLE));
 
     return cluster_list;
 }
 
 void zigbee_task(void *pvParameters) {
+    // esp_zb_sleep_enable(true);
+
     esp_zb_platform_config_t config = {
         .radio_config = {
             .radio_mode = ZB_RADIO_MODE_NATIVE,
@@ -158,7 +201,7 @@ void zigbee_task(void *pvParameters) {
             .keep_alive = ED_KEEP_ALIVE,
         },
     };
-    
+
     esp_zb_init(&zb_cfg);
     esp_zb_set_channel_mask(11); // Channel 11
 
