@@ -19,7 +19,10 @@ void bme280_init()
         .scl_io_num = I2C_SCL,
         .sda_pullup_en = GPIO_PULLUP_ENABLE,
         .scl_pullup_en = GPIO_PULLUP_ENABLE,
-        .master.clk_speed = 100000};
+        .master = {
+            .clk_speed = 100000
+        }
+    };
 
     i2c_bus_handle_t i2c_bus = i2c_bus_create(I2C_NUM_0, &i2c_config);
 
