@@ -1,4 +1,6 @@
 #include <stdio.h>
+#include "freertos/FreeRTOS.h"
+#include "freertos/queue.h"
 #include "esp_zigbee_core.h"
 #include "zcl/esp_zigbee_zcl_common.h"
 #include "zb_config.h"
@@ -11,10 +13,7 @@
 
 static const char *TAG = "Zigbee";
 
-static zigbee_network_event_cb reboot_success_callback = []() {};
-static zigbee_network_event_cb factory_reset_mode_callback = []() {};
-static zigbee_network_event_cb network_joined_callback = []() {};
-static zigbee_network_event_cb connection_failed_callback = []() {};
+QueueHandle_t zigbee_event_queue = NULL;
 
 static int8_t retry_count = 1;
 
@@ -23,38 +22,9 @@ void factory_reset()
     esp_zb_factory_reset();
 }
 
-void register_reboot_success_callback(zigbee_network_event_cb cb)
-{
-    reboot_success_callback = cb;
-}
-
-void register_factory_reset_mode_callback(zigbee_network_event_cb cb)
-{
-    factory_reset_mode_callback = cb;
-}
-
-void register_network_joined_callback(zigbee_network_event_cb cb)
-{
-    network_joined_callback = cb;
-}
-
-void register_connection_failed_callback(zigbee_network_event_cb cb)
-{
-    connection_failed_callback = cb;
-}
-
 static void bdb_start_top_level_commissioning_cb(uint8_t mode_mask)
 {
     esp_zb_bdb_start_top_level_commissioning(mode_mask);
-}
-
-void send_device_announce(void)
-{
-    esp_zb_lock_acquire(portMAX_DELAY);
-
-    esp_zb_zdo_device_announcement_req();
-
-    esp_zb_lock_release();
 }
 
 void esp_zb_app_signal_handler(esp_zb_app_signal_t *signal_struct)
@@ -62,6 +32,8 @@ void esp_zb_app_signal_handler(esp_zb_app_signal_t *signal_struct)
     uint32_t *p_sg_p = signal_struct->p_app_signal;
     esp_err_t err_status = signal_struct->esp_err_status;
     esp_zb_app_signal_type_t sig_type = (esp_zb_app_signal_type_t)(*p_sg_p);
+    zigbee_event_t event;
+
     switch (sig_type)
     {
         case ESP_ZB_ZDO_SIGNAL_SKIP_STARTUP:
@@ -74,14 +46,16 @@ void esp_zb_app_signal_handler(esp_zb_app_signal_t *signal_struct)
             {
                 if (esp_zb_bdb_is_factory_new())
                 {
-                    factory_reset_mode_callback();
+                    event.type = ZB_EVENT_FACTORY_RESET_MODE;
+                    xQueueSend(zigbee_event_queue, &event, portMAX_DELAY);
                     ESP_LOGI(TAG, "Start network steering");
                     esp_zb_bdb_start_top_level_commissioning(ESP_ZB_BDB_MODE_NETWORK_STEERING);
                 }
                 else
                 {
                     ESP_LOGI(TAG, "Device rebooted");
-                    reboot_success_callback();
+                    event.type = ZB_EVENT_REBOOT_SUCCESS;
+                    xQueueSend(zigbee_event_queue, &event, portMAX_DELAY);
                 }
             }
             else
@@ -93,7 +67,8 @@ void esp_zb_app_signal_handler(esp_zb_app_signal_t *signal_struct)
                 }
                 else
                 {
-                    connection_failed_callback();
+                    event.type = ZB_EVENT_CONNECTION_FAILED;
+                    xQueueSend(zigbee_event_queue, &event, portMAX_DELAY);
                 }
             }
             break;
@@ -107,14 +82,15 @@ void esp_zb_app_signal_handler(esp_zb_app_signal_t *signal_struct)
                         extended_pan_id[3], extended_pan_id[2], extended_pan_id[1], extended_pan_id[0],
                         esp_zb_get_pan_id(), esp_zb_get_current_channel(), esp_zb_get_short_address());
 
-                network_joined_callback();
+                event.type = ZB_EVENT_NETWORK_JOINED;
+                xQueueSend(zigbee_event_queue, &event, portMAX_DELAY);
             }
             else
             {
                 ESP_LOGW(TAG, "Network steering was not successful (status: %s). Retrying...", esp_err_to_name(err_status));
                 esp_zb_scheduler_alarm((esp_zb_callback_t)bdb_start_top_level_commissioning_cb, ESP_ZB_BDB_MODE_NETWORK_STEERING, 1000);
             }
-            break;    
+            break;
         case ESP_ZB_COMMON_SIGNAL_CAN_SLEEP:
             break;
         case ESP_ZB_ZDO_SIGNAL_LEAVE_INDICATION:
