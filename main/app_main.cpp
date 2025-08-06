@@ -52,7 +52,7 @@ void send_data(void)
     update_temperature_value((int16_t)(temp * 100));
     update_humidity_value((uint16_t)(hum * 100));
     update_pressure_value((int16_t)(press * 10));
-    update_battery_value(battery_percent);
+    update_battery_percent_value(battery_percent);
 
     ESP_LOGI(TAG, "Температура: %.2f °C", temp);
     ESP_LOGI(TAG, "Влажность: %.2f %%", hum);

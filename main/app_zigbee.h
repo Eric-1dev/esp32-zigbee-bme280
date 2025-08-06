@@ -31,6 +31,6 @@ void factory_reset(void);
 void update_temperature_value(int16_t temperature_degrees_tenths);
 void update_humidity_value(uint16_t humidity_tenths);
 void update_pressure_value(int16_t pressure_tenths);
-void update_battery_value(uint8_t battery_percent);
+void update_battery_percent_value(uint8_t battery_percent);
 
 #endif

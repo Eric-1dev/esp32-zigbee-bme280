@@ -109,7 +109,7 @@ static esp_zb_cluster_list_t *sensor_clusters_create()
     // Basic Cluster
     esp_zb_basic_cluster_cfg_t basic_config = {
         .zcl_version = ESP_ZB_ZCL_BASIC_ZCL_VERSION_DEFAULT_VALUE,
-        .power_source = 0x03 // Battery
+        .power_source = ESP_ZB_ZCL_BASIC_POWER_SOURCE_BATTERY
     };
     esp_zb_attribute_list_t *basic_cluster = esp_zb_basic_cluster_create(&basic_config);
     ESP_ERROR_CHECK(esp_zb_basic_cluster_add_attr(basic_cluster, ESP_ZB_ZCL_ATTR_BASIC_MANUFACTURER_NAME_ID, (void *)MANUFACTURER_NAME));
@@ -131,9 +131,9 @@ static esp_zb_cluster_list_t *sensor_clusters_create()
 
     esp_zb_attribute_list_t *temp_attr_list = esp_zb_zcl_attr_list_create(ESP_ZB_ZCL_CLUSTER_ID_TEMP_MEASUREMENT);
     ESP_ERROR_CHECK(esp_zb_cluster_add_attr(temp_attr_list, ESP_ZB_ZCL_CLUSTER_ID_TEMP_MEASUREMENT, ESP_ZB_ZCL_ATTR_TEMP_MEASUREMENT_VALUE_ID, ESP_ZB_ZCL_ATTR_TYPE_S16, ESP_ZB_ZCL_ATTR_ACCESS_REPORTING, &temp_measured_value));
-    ESP_ERROR_CHECK(esp_zb_cluster_add_attr(temp_attr_list, ESP_ZB_ZCL_CLUSTER_ID_TEMP_MEASUREMENT, ESP_ZB_ZCL_ATTR_TEMP_MEASUREMENT_MIN_VALUE_ID, ESP_ZB_ZCL_ATTR_TYPE_S16, ESP_ZB_ZCL_ATTR_ACCESS_REPORTING, &temp_min_value));
-    ESP_ERROR_CHECK(esp_zb_cluster_add_attr(temp_attr_list, ESP_ZB_ZCL_CLUSTER_ID_TEMP_MEASUREMENT, ESP_ZB_ZCL_ATTR_TEMP_MEASUREMENT_MAX_VALUE_ID, ESP_ZB_ZCL_ATTR_TYPE_S16, ESP_ZB_ZCL_ATTR_ACCESS_REPORTING, &temp_max_value));
-    ESP_ERROR_CHECK(esp_zb_cluster_add_attr(temp_attr_list, ESP_ZB_ZCL_CLUSTER_ID_TEMP_MEASUREMENT, ESP_ZB_ZCL_ATTR_TEMP_MEASUREMENT_TOLERANCE_ID, ESP_ZB_ZCL_ATTR_TYPE_U16, ESP_ZB_ZCL_ATTR_ACCESS_REPORTING, &temp_tolerance));
+    ESP_ERROR_CHECK(esp_zb_cluster_add_attr(temp_attr_list, ESP_ZB_ZCL_CLUSTER_ID_TEMP_MEASUREMENT, ESP_ZB_ZCL_ATTR_TEMP_MEASUREMENT_MIN_VALUE_ID, ESP_ZB_ZCL_ATTR_TYPE_S16, ESP_ZB_ZCL_ATTR_ACCESS_READ_ONLY, &temp_min_value));
+    ESP_ERROR_CHECK(esp_zb_cluster_add_attr(temp_attr_list, ESP_ZB_ZCL_CLUSTER_ID_TEMP_MEASUREMENT, ESP_ZB_ZCL_ATTR_TEMP_MEASUREMENT_MAX_VALUE_ID, ESP_ZB_ZCL_ATTR_TYPE_S16, ESP_ZB_ZCL_ATTR_ACCESS_READ_ONLY, &temp_max_value));
+    ESP_ERROR_CHECK(esp_zb_cluster_add_attr(temp_attr_list, ESP_ZB_ZCL_CLUSTER_ID_TEMP_MEASUREMENT, ESP_ZB_ZCL_ATTR_TEMP_MEASUREMENT_TOLERANCE_ID, ESP_ZB_ZCL_ATTR_TYPE_U16, ESP_ZB_ZCL_ATTR_ACCESS_READ_ONLY, &temp_tolerance));
     ESP_ERROR_CHECK(esp_zb_cluster_list_add_temperature_meas_cluster(cluster_list, temp_attr_list, ESP_ZB_ZCL_CLUSTER_SERVER_ROLE));
 
     // ------------------------------- Влажность -------------------------------
@@ -144,9 +144,9 @@ static esp_zb_cluster_list_t *sensor_clusters_create()
 
     esp_zb_attribute_list_t *humidity_attr_list = esp_zb_zcl_attr_list_create(ESP_ZB_ZCL_CLUSTER_ID_REL_HUMIDITY_MEASUREMENT);
     ESP_ERROR_CHECK(esp_zb_cluster_add_attr(humidity_attr_list, ESP_ZB_ZCL_CLUSTER_ID_REL_HUMIDITY_MEASUREMENT, ESP_ZB_ZCL_ATTR_REL_HUMIDITY_MEASUREMENT_VALUE_ID, ESP_ZB_ZCL_ATTR_TYPE_U16, ESP_ZB_ZCL_ATTR_ACCESS_REPORTING, &hum_measured_value));
-    ESP_ERROR_CHECK(esp_zb_cluster_add_attr(humidity_attr_list, ESP_ZB_ZCL_CLUSTER_ID_REL_HUMIDITY_MEASUREMENT, ESP_ZB_ZCL_ATTR_REL_HUMIDITY_MEASUREMENT_MIN_VALUE_ID, ESP_ZB_ZCL_ATTR_TYPE_S16, ESP_ZB_ZCL_ATTR_ACCESS_REPORTING, &hum_min_value));
-    ESP_ERROR_CHECK(esp_zb_cluster_add_attr(humidity_attr_list, ESP_ZB_ZCL_CLUSTER_ID_REL_HUMIDITY_MEASUREMENT, ESP_ZB_ZCL_ATTR_REL_HUMIDITY_MEASUREMENT_MAX_VALUE_ID, ESP_ZB_ZCL_ATTR_TYPE_S16, ESP_ZB_ZCL_ATTR_ACCESS_REPORTING, &hum_max_value));
-    ESP_ERROR_CHECK(esp_zb_cluster_add_attr(humidity_attr_list, ESP_ZB_ZCL_CLUSTER_ID_REL_HUMIDITY_MEASUREMENT, ESP_ZB_ZCL_ATTR_REL_HUMIDITY_TOLERANCE_ID, ESP_ZB_ZCL_ATTR_TYPE_U16, ESP_ZB_ZCL_ATTR_ACCESS_REPORTING, &hum_tolerance));
+    ESP_ERROR_CHECK(esp_zb_cluster_add_attr(humidity_attr_list, ESP_ZB_ZCL_CLUSTER_ID_REL_HUMIDITY_MEASUREMENT, ESP_ZB_ZCL_ATTR_REL_HUMIDITY_MEASUREMENT_MIN_VALUE_ID, ESP_ZB_ZCL_ATTR_TYPE_S16, ESP_ZB_ZCL_ATTR_ACCESS_READ_ONLY, &hum_min_value));
+    ESP_ERROR_CHECK(esp_zb_cluster_add_attr(humidity_attr_list, ESP_ZB_ZCL_CLUSTER_ID_REL_HUMIDITY_MEASUREMENT, ESP_ZB_ZCL_ATTR_REL_HUMIDITY_MEASUREMENT_MAX_VALUE_ID, ESP_ZB_ZCL_ATTR_TYPE_S16, ESP_ZB_ZCL_ATTR_ACCESS_READ_ONLY, &hum_max_value));
+    ESP_ERROR_CHECK(esp_zb_cluster_add_attr(humidity_attr_list, ESP_ZB_ZCL_CLUSTER_ID_REL_HUMIDITY_MEASUREMENT, ESP_ZB_ZCL_ATTR_REL_HUMIDITY_TOLERANCE_ID, ESP_ZB_ZCL_ATTR_TYPE_U16, ESP_ZB_ZCL_ATTR_ACCESS_READ_ONLY, &hum_tolerance));
     ESP_ERROR_CHECK(esp_zb_cluster_list_add_humidity_meas_cluster(cluster_list, humidity_attr_list, ESP_ZB_ZCL_CLUSTER_SERVER_ROLE));
 
     // ------------------------------- Давление -------------------------------
@@ -157,13 +157,13 @@ static esp_zb_cluster_list_t *sensor_clusters_create()
 
     esp_zb_attribute_list_t *pressure_attr_list = esp_zb_zcl_attr_list_create(ESP_ZB_ZCL_CLUSTER_ID_PRESSURE_MEASUREMENT);
     ESP_ERROR_CHECK(esp_zb_cluster_add_attr(pressure_attr_list, ESP_ZB_ZCL_CLUSTER_ID_PRESSURE_MEASUREMENT, ESP_ZB_ZCL_ATTR_PRESSURE_MEASUREMENT_VALUE_ID, ESP_ZB_ZCL_ATTR_TYPE_S16, ESP_ZB_ZCL_ATTR_ACCESS_REPORTING, &pres_measured_value));
-    ESP_ERROR_CHECK(esp_zb_cluster_add_attr(pressure_attr_list, ESP_ZB_ZCL_CLUSTER_ID_PRESSURE_MEASUREMENT, ESP_ZB_ZCL_ATTR_PRESSURE_MEASUREMENT_MIN_VALUE_ID, ESP_ZB_ZCL_ATTR_TYPE_S16, ESP_ZB_ZCL_ATTR_ACCESS_REPORTING, &pres_min_value));
-    ESP_ERROR_CHECK(esp_zb_cluster_add_attr(pressure_attr_list, ESP_ZB_ZCL_CLUSTER_ID_PRESSURE_MEASUREMENT, ESP_ZB_ZCL_ATTR_PRESSURE_MEASUREMENT_MAX_VALUE_ID, ESP_ZB_ZCL_ATTR_TYPE_S16, ESP_ZB_ZCL_ATTR_ACCESS_REPORTING, &pres_max_value));
-    ESP_ERROR_CHECK(esp_zb_cluster_add_attr(pressure_attr_list, ESP_ZB_ZCL_CLUSTER_ID_PRESSURE_MEASUREMENT, ESP_ZB_ZCL_ATTR_PRESSURE_MEASUREMENT_TOLERANCE_ID, ESP_ZB_ZCL_ATTR_TYPE_U16, ESP_ZB_ZCL_ATTR_ACCESS_REPORTING, &pres_tolerance));
+    ESP_ERROR_CHECK(esp_zb_cluster_add_attr(pressure_attr_list, ESP_ZB_ZCL_CLUSTER_ID_PRESSURE_MEASUREMENT, ESP_ZB_ZCL_ATTR_PRESSURE_MEASUREMENT_MIN_VALUE_ID, ESP_ZB_ZCL_ATTR_TYPE_S16, ESP_ZB_ZCL_ATTR_ACCESS_READ_ONLY, &pres_min_value));
+    ESP_ERROR_CHECK(esp_zb_cluster_add_attr(pressure_attr_list, ESP_ZB_ZCL_CLUSTER_ID_PRESSURE_MEASUREMENT, ESP_ZB_ZCL_ATTR_PRESSURE_MEASUREMENT_MAX_VALUE_ID, ESP_ZB_ZCL_ATTR_TYPE_S16, ESP_ZB_ZCL_ATTR_ACCESS_READ_ONLY, &pres_max_value));
+    ESP_ERROR_CHECK(esp_zb_cluster_add_attr(pressure_attr_list, ESP_ZB_ZCL_CLUSTER_ID_PRESSURE_MEASUREMENT, ESP_ZB_ZCL_ATTR_PRESSURE_MEASUREMENT_TOLERANCE_ID, ESP_ZB_ZCL_ATTR_TYPE_U16, ESP_ZB_ZCL_ATTR_ACCESS_READ_ONLY, &pres_tolerance));
     ESP_ERROR_CHECK(esp_zb_cluster_list_add_pressure_meas_cluster(cluster_list, pressure_attr_list, ESP_ZB_ZCL_CLUSTER_SERVER_ROLE));
 
     // ------------------------------- Питание -------------------------------
-    uint8_t battery_percent_value = 100;
+    uint8_t battery_percent_value = 2;
 
     esp_zb_attribute_list_t *power_attr_list = esp_zb_zcl_attr_list_create(ESP_ZB_ZCL_CLUSTER_ID_POWER_CONFIG);
     ESP_ERROR_CHECK(esp_zb_cluster_add_attr(power_attr_list, ESP_ZB_ZCL_CLUSTER_ID_POWER_CONFIG, ESP_ZB_ZCL_ATTR_POWER_CONFIG_BATTERY_PERCENTAGE_REMAINING_ID, ESP_ZB_ZCL_ATTR_TYPE_U8, ESP_ZB_ZCL_ATTR_ACCESS_REPORTING, &battery_percent_value));
@@ -242,7 +242,7 @@ void update_attribute(uint16_t cluster_id, uint16_t attr_id, void *value_p)
         .clusterID = cluster_id,
         .manuf_specific = {0},
         .direction = ESP_ZB_ZCL_CMD_DIRECTION_TO_CLI,
-        .dis_defalut_resp = {0},
+        .dis_default_resp = {0},
         .manuf_code = {0},
         .attributeID = attr_id
     };
@@ -266,7 +266,7 @@ void update_pressure_value(int16_t pressure_tenths)
     update_attribute(ESP_ZB_ZCL_CLUSTER_ID_PRESSURE_MEASUREMENT, ESP_ZB_ZCL_ATTR_PRESSURE_MEASUREMENT_VALUE_ID, &pressure_tenths);
 }
 
-void update_battery_value(uint8_t battery_percent)
+void update_battery_percent_value(uint8_t battery_percent)
 {
     uint8_t value = battery_percent * 2;
     update_attribute(ESP_ZB_ZCL_CLUSTER_ID_POWER_CONFIG, ESP_ZB_ZCL_ATTR_POWER_CONFIG_BATTERY_PERCENTAGE_REMAINING_ID, &value);

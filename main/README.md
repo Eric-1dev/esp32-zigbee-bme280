@@ -13,5 +13,5 @@
 - Button on GPIO9
 
 ## Requirements:
-- ESP-IDF v5.0+
+- ESP-IDF v5.5+
 - Python dependencies: kconfiglib, pyserial
